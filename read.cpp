@@ -53,7 +53,7 @@ struct read_var<unsigned char>
 template<>
 struct read_var<int>
 {
-    static unsigned char call(char *v)
+    static int call(char *v)
     {
         return read_int(v);
     }
@@ -92,26 +92,28 @@ int main()
 {
     using clock = std::chrono::system_clock;
     using ms = std::chrono::duration<double, std::milli>;
-    char test[8] = {0};
+    char test[12] = {0};
     int a = 1;
     int b = 90;
+    int c = 1209;
     std::memcpy(test, &a, sizeof(int));
     std::memcpy(&test[4], &b, sizeof(int));
+    std::memcpy(&test[8], &c, sizeof(int));
 
     // Read a tuple of char, unsigned char, char
     const auto before = clock::now();
-    auto result = read_var<std::tuple<int, int>>::call(test);
+    auto result = read_var<std::tuple<int, int, int>>::call(test);
     const ms duration = clock::now() - before;
     std::cout << "It took " << duration.count() << "ms" << std::endl;
 
     const auto before1 = clock::now();
-    packet p = {0, 8, 8, test};
-    auto result2 = pkt_read(&p, {{{"int1", &typeid(int)}, {"int2", &typeid(int)}}});
+    packet p = {0, 12, 12, test};
+    auto result2 = pkt_read(&p, {{{"int1", &typeid(int)}, {"int2", &typeid(int)}, {"int3", &typeid(int)}}});
     const ms duration1 = clock::now() - before1;
     std::cout << "It took " << duration1.count() << "ms" << std::endl;
 
-    std::println("{}, {}", std::get<0>(result), std::get<1>(result));
-    std::println("{}, {}", result2.get<int>("int1"), result2.get<int>("int2"));
+    std::println("{}, {}, {}", std::get<0>(result), std::get<1>(result), std::get<2>(result));
+    std::println("{}, {}, {}", result2.get<int>("int1"), result2.get<int>("int2"), result2.get<int>("int3"));
 
     return 0;
 }
