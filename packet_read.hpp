@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string.h>
 #include <print>
+#include <algorithm>
 #if defined(__linux__)
 #  include <endian.h>
 #elif defined(__FreeBSD__) || defined(__NetBSD__)
@@ -41,6 +42,37 @@ class Packet
     private:
         std::map<std::string, std::any> data_;
 };
+
+template<class A>
+class Packet_c
+{
+    public:
+        Packet_c(std::vector<std::string> names, std::vector<A> t)
+            :names_(names), t_(t)
+            {}
+        
+        int get_index(std::string name)
+        {
+            return std::distance(names_.begin(), std::find(names_.begin(), names_.end(), name));
+        }
+
+        A get(std::string name)
+        {
+            return t_[std::distance(names_.begin(), std::find(names_.begin(), names_.end(), name))];
+        }
+    private:
+        std::vector<std::string> names_;
+        std::vector<A> t_;
+};
+
+template <class Tuple,
+   class T = std::decay_t<std::tuple_element_t<0, std::decay_t<Tuple>>>>
+std::vector<T> to_vector(Tuple&& tuple)
+{
+    return std::apply([](auto&&... elems){
+        return std::vector<T>{std::forward<decltype(elems)>(elems)...};
+    }, std::forward<Tuple>(tuple));
+}
 
 Packet pkt_read(packet *p, indexed_map types)
 {

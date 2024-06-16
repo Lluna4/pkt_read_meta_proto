@@ -58,35 +58,17 @@ struct read_var<int>
         return read_int(v);
     }
 };
-template <std::size_t N, typename Tuple>
-struct OffsetHelper
-{
-    static constexpr std::size_t value = sizeof(std::tuple_element_t<N-1, Tuple>) + OffsetHelper<N-1, Tuple>::value;
-};
 
-template <typename Tuple>
-struct OffsetHelper<0, Tuple>
+template <typename Integer, Integer ...I, typename F> constexpr void const_for_each(std::integer_sequence<Integer, I...>, F &&func)
 {
-    static constexpr std::size_t value = 0;
-};
+    (func(std::integral_constant<Integer, I>{}) , ...);
+}
 
-// Specialization for std::tuple to read multiple types
-template <typename... Ts>
-struct read_var<std::tuple<Ts...>>
+template <auto N, typename F> constexpr void const_for(F &&func)
 {
-    public:
-        static std::tuple<Ts...> call(char *v)
-        {
-            return call_impl(v, std::index_sequence_for<Ts...>{});
-        }
-
-    private:
-        template <std::size_t... Is>
-        static std::tuple<Ts...> call_impl(char *v, std::index_sequence<Is...>)
-        {
-            return std::make_tuple(read_var<std::tuple_element_t<Is, std::tuple<Ts...>>>::call(v + OffsetHelper<Is, std::tuple<Ts...>>::value)...);
-        }
-};
+    if constexpr (N > 0)
+        const_for_each(std::make_integer_sequence<decltype(N), N>{}, std::forward<F>(func));
+}
 
 int main()
 {
@@ -99,22 +81,30 @@ int main()
     std::memcpy(test, &a, sizeof(int));
     std::memcpy(&test[4], &b, sizeof(int));
     std::memcpy(&test[8], &c, sizeof(int));
+    char *ptr = test;
 
     // Read a tuple of char, unsigned char, char
     const auto before = clock::now();
-    auto result = read_var<std::tuple<int, int, int>>::call(test);
+    std::tuple<int, int, int> t;
+    constexpr std::size_t size = std::tuple_size_v<decltype(t)>;
+    const_for<size>([&](auto i)
+    {
+        std::get<i.value>(t) = read_var<std::tuple_element_t<i.value, decltype(t)>>::call(ptr);
+        ptr += sizeof(std::tuple_element_t<i.value, decltype(t)>);
+    });
+   
     const ms duration = clock::now() - before;
     std::cout << "It took " << duration.count() << "ms" << std::endl;
-
-    const auto before1 = clock::now();
     packet p = {0, 12, 12, test};
+    const auto before1 = clock::now();
+   
     auto result2 = pkt_read(&p, {{{"int1", &typeid(int)}, {"int2", &typeid(int)}, {"int3", &typeid(int)}}});
+    
     const ms duration1 = clock::now() - before1;
     std::cout << "It took " << duration1.count() << "ms" << std::endl;
 
-    std::println("{}, {}, {}", std::get<0>(result), std::get<1>(result), std::get<2>(result));
+    std::println("{}, {}, {}", std::get<0>(t), std::get<1>(t), std::get<2>(t));
     std::println("{}, {}, {}", result2.get<int>("int1"), result2.get<int>("int2"), result2.get<int>("int3"));
-
     return 0;
 }
 
