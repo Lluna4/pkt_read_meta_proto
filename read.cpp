@@ -4,6 +4,8 @@
 #include <cstring>
 #include <chrono>
 #include "packet_read.hpp"
+#include <frozen/map.h>
+#include <frozen/string.h>
 
 // Read a single char from a char pointer
 char read_char(char *v)
@@ -26,6 +28,27 @@ int read_int(char *v)
     return a;
 }
 
+unsigned short read_ushort(char *v)
+{
+    unsigned short  a = 0;
+
+    std::memcpy(&a, v, sizeof(unsigned short));
+
+    return a;
+}
+
+minecraft::string read_string_m(char *v)
+{
+    unsigned long s = 0;
+    std::size_t varint_size = ReadUleb128(v, &s);
+    std::string str;
+    
+    v += varint_size;
+    str = v;
+    str = str.substr(0, s);
+    return (minecraft::string){.size = s, .str = str};
+}
+
 // Template struct for reading variables
 template<typename T>
 struct read_var;
@@ -34,9 +57,11 @@ struct read_var;
 template<>
 struct read_var<char>
 {
-    static char call(char *v)
+    static char call(char **v)
     {
-        return read_char(v);
+        char ret = read_char(*v);
+        *v++;
+        return ret;
     }
 };
 
@@ -44,18 +69,56 @@ struct read_var<char>
 template<>
 struct read_var<unsigned char>
 {
-    static unsigned char call(char *v)
+    static unsigned char call(char **v)
     {
-        return read_uchar(v);
+        unsigned char ret = read_uchar(*v);
+        *v++;
+        return ret;
     }
 };
 
 template<>
 struct read_var<int>
 {
-    static int call(char *v)
+    static int call(char **v)
     {
-        return read_int(v);
+        int ret = read_int(*v);
+        *v += sizeof(int);
+        return ret;
+    }
+};
+
+template<>
+struct read_var<varint>
+{
+    static varint call(char **v)
+    {
+        unsigned long ret = 0;
+        int size = ReadUleb128(*v, &ret);
+        *v += size;
+        return (varint){.size = size,.num = ret};
+    }
+};
+
+template<>
+struct read_var<unsigned short>
+{
+    static unsigned short call(char **v)
+    {
+        unsigned short ret = read_ushort(*v);
+        *v += sizeof(unsigned short);
+        return ret;
+    }
+};
+
+template<>
+struct read_var<minecraft::string>
+{
+    static minecraft::string call(char **v)
+    {
+        minecraft::string ret = read_string_m(*v);
+        *v += ret.size + 1;
+        return ret;
     }
 };
 
@@ -70,41 +133,55 @@ template <auto N, typename F> constexpr void const_for(F &&func)
         const_for_each(std::make_integer_sequence<decltype(N), N>{}, std::forward<F>(func));
 }
 
+
 int main()
 {
     using clock = std::chrono::system_clock;
     using ms = std::chrono::duration<double, std::milli>;
-    char test[12] = {0};
-    int a = 1;
-    int b = 90;
-    int c = 1209;
-    std::memcpy(test, &a, sizeof(int));
-    std::memcpy(&test[4], &b, sizeof(int));
-    std::memcpy(&test[8], &c, sizeof(int));
-    char *ptr = test;
+
+    std::string buf;
+    unsigned short port = 25565;
+    WriteUleb128(buf, 765);
+    WriteUleb128(buf, strlen("hola!"));
+    buf.append("hola!");
+    char a[3] = {0};
+    std::memcpy(a, &port, sizeof(unsigned short));
+    buf.append(a);
+    WriteUleb128(buf, 1);
 
     // Read a tuple of char, unsigned char, char
+    int i = 0;
+    std::vector<std::tuple<varint, minecraft::string, unsigned short, varint>> vec;
+    vec.reserve(1000000);
     const auto before = clock::now();
-    std::tuple<int, int, int> t;
-    constexpr std::size_t size = std::tuple_size_v<decltype(t)>;
-    const_for<size>([&](auto i)
+    while (i < 1000000)
     {
-        std::get<i.value>(t) = read_var<std::tuple_element_t<i.value, decltype(t)>>::call(ptr);
-        ptr += sizeof(std::tuple_element_t<i.value, decltype(t)>);
-    });
+        std::tuple<varint, minecraft::string, unsigned short, varint> t;
+        constexpr std::size_t size = std::tuple_size_v<decltype(t)>;
+        char *ptr = (char *)buf.c_str();
+        const_for<size>([&](auto i)
+        {
+            read_var<std::tuple_element_t<i.value, decltype(t)>>::call(&ptr);
+        });
+        i++;
+        vec.push_back(t);
+    }
    
     const ms duration = clock::now() - before;
     std::cout << "It took " << duration.count() << "ms" << std::endl;
-    packet p = {0, 12, 12, test};
+    packet p = {0, 100, 100, (char *)buf.c_str()};
     const auto before1 = clock::now();
-   
-    auto result2 = pkt_read(&p, {{{"int1", &typeid(int)}, {"int2", &typeid(int)}, {"int3", &typeid(int)}}});
+    i = 0;
+    while (i < 1000000)
+    {
+        auto result2 = pkt_read(p, {{{"Version", &typeid(minecraft::varint)}, {"host", &typeid(minecraft::string)}, {"port", &typeid(unsigned short)}, {"state", &typeid(minecraft::varint)}},
+        {"Version", "host", "port", "state"}});
+        i++;
+    }
     
     const ms duration1 = clock::now() - before1;
     std::cout << "It took " << duration1.count() << "ms" << std::endl;
-
-    std::println("{}, {}, {}", std::get<0>(t), std::get<1>(t), std::get<2>(t));
-    std::println("{}, {}, {}", result2.get<int>("int1"), result2.get<int>("int2"), result2.get<int>("int3"));
-    return 0;
+    std::cout << vec.size() << std::endl;
+    return 0; 
 }
 

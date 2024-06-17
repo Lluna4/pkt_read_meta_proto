@@ -7,6 +7,7 @@
 #include <fstream>
 #include <bitset>
 #include <map>
+#include <frozen/string.h>
 
 struct packet
 {
@@ -76,6 +77,24 @@ void write_string(std::string &str, std::string src)
 	str.append(src);
 }
 
+struct varint
+{
+	int size;
+	unsigned long num;
+};
+
+namespace minecraft
+{
+	struct string
+	{
+		int size;
+		std::string str;
+	};
+	struct varint
+	{
+		unsigned long num;
+	};
+};
 
 
 unsigned long read_string(char *str, std::string &dest)
@@ -259,5 +278,6 @@ struct variable_type
 
 struct indexed_map
 {
-	std::vector<variable_type> map;
+	std::map<std::string, const std::type_info*> map;
+	std::vector<std::string> index;
 };
