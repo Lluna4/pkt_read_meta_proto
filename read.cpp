@@ -6,6 +6,7 @@
 #include "packet_read.hpp"
 #include <frozen/map.h>
 #include <frozen/string.h>
+#define read_comp_pkt(size, ptr, t) const_for<size>([&](auto i){read_var<std::tuple_element_t<i.value, decltype(t)>>::call(&ptr);});
 
 // Read a single char from a char pointer
 char read_char(char *v)
@@ -159,10 +160,7 @@ int main()
         std::tuple<varint, minecraft::string, unsigned short, varint> t;
         constexpr std::size_t size = std::tuple_size_v<decltype(t)>;
         char *ptr = (char *)buf.c_str();
-        const_for<size>([&](auto i)
-        {
-            read_var<std::tuple_element_t<i.value, decltype(t)>>::call(&ptr);
-        });
+        read_comp_pkt(size, ptr, t);
         i++;
         vec.push_back(t);
     }
